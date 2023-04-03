@@ -1,0 +1,93 @@
+Sub atualizaChromeDriver()
+    ' Especifica o usuário de forma dinâmica
+    user = Environ("USERPROFILE")
+    
+    ' Verificar a versão do Chrome instalada no computador
+    Set regKey = CreateObject("WScript.Shell")
+    versaoChromePcAtual = Mid(regKey.RegRead("HKEY_CURRENT_USER\SOFTWARE\Google\Chrome\BLBeacon\version"), 1, 3)
+    
+    ' Verifica a versao do ChromeDriver instalada no computador
+    driverPath = user & "\AppData\Local\SeleniumBasic\chromedriver.exe"
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    If fso.FileExists(driverPath) Then
+        cmd = "cmd /C" & driverPath & " --version"
+        Set wsh = VBA.CreateObject("WScript.Shell")
+        output = wsh.Exec(cmd).StdOut.ReadAll
+        driverVersion = Mid(Trim(Split(output, " ")(1)), 1, 3)
+    End If
+    
+    ' Caso a versao do ChromeDriver e a versao do Chrome forem diferentes, abre o Internet Explorer e encontra a versão correta para download
+    If versaoChromePcAtual <> driverVersion Then
+        Set oIE = CreateObject("InternetExplorer.Application")
+        oIE.Visible = False
+        oIE.Navigate ("https://chromedriver.chromium.org/downloads")
+        Do While oIE.Busy Or oIE.readyState <> 4
+            DoEvents
+        Loop
+        Set htmlDoc = oIE.document
+        linkVersao = htmlDoc.getElementsByClassName("XqQF9c").Length
+        For link = 0 To linkVersao
+            descricaoVersao = htmlDoc.getElementsByClassName("XqQF9c")(link).innerText
+            inicioBaixarVersao = Mid(descricaoVersao, 14, 3)
+            If inicioBaixarVersao = versaoChromePcAtual Then
+                baixarVersao = Mid(descricaoVersao, 14, 13)
+                Exit For
+            End If
+        Next
+        oIE.Quit
+        
+        If fso.FileExists(user & "\AppData\Local\SeleniumBasic\chromedriver.exe") Then
+            Kill user & "\AppData\Local\SeleniumBasic\chromedriver.exe"
+        End If
+        If fso.FileExists(user & "\AppData\Local\SeleniumBasic\LICENSE.chromedriver") Then
+            Kill user & "\AppData\Local\SeleniumBasic\LICENSE.chromedriver"
+        End If
+        
+        ' Define a URL do arquivo .zip a ser baixado
+        url = "https://chromedriver.storage.googleapis.com/" & baixarVersao & "/chromedriver_win32.zip"
+        
+        ' Faz o Download utilizando httpRequest
+        Set httpRequest = CreateObject("MSXML2.XMLHTTP")
+        httpRequest.Open "GET", url, False
+        httpRequest.Send
+        Application.Wait (Now + TimeSerial(0, 0, 10))
+        
+        ' Verifica se a requisição foi bem sucedida
+        If httpRequest.Status = 200 Then
+            ' Obtém os dados do arquivo .zip
+            fileData = httpRequest.responseBody
+            
+            ' Cria um objeto ADODB.Stream para salvar os dados do arquivo
+            Set fileStream = CreateObject("ADODB.Stream")
+            
+            ' Configura o objeto para escrever os dados em um arquivo
+            fileStream.Type = 1
+            fileStream.Open
+            fileStream.Write fileData
+            fileStream.SaveToFile user & "\AppData\Local\SeleniumBasic\chromedriver_win32.zip", 2
+            
+            ' Limpa o objeto da memória
+            fileStream.Close
+            Set fileStream = Nothing
+        Else
+            ' Exibe uma mensagem de erro
+            MsgBox "Erro " & httpRequest.Status & ": " & httpRequest.statusText
+        End If
+        
+        ' Limpa o objeto da memória
+        httpRequest.abort
+        Set httpRequest = Nothing
+        
+        ' Criar objeto para descompactar o arquivo
+        Dim shell As Object
+        Set shell = CreateObject("Shell.Application")
+        Dim zipFile As Object
+        ' Determina o arquivo ZIP a ser descompactado
+        Set zipFile = shell.Namespace(user & "\AppData\Local\SeleniumBasic\chromedriver_win32.zip")
+        ' Descompacta os arquivos na pasta
+        shell.Namespace(user & "\AppData\Local\SeleniumBasic\").CopyHere zipFile.Items
+        
+        ' Excluir o arquivo zip
+        Kill user & "\AppData\Local\SeleniumBasic\chromedriver_win32.zip"
+    End If
+End Sub
