@@ -20,20 +20,12 @@ Sub atualizaChromeDriver()
     If versaoChromePcAtual <> driverVersion Then
         Set oIE = CreateObject("InternetExplorer.Application")
         oIE.Visible = False
-        oIE.Navigate ("https://chromedriver.chromium.org/downloads")
+        oIE.Navigate ("https://googlechromelabs.github.io/chrome-for-testing/")
         Do While oIE.Busy Or oIE.readyState <> 4
             DoEvents
         Loop
         Set htmlDoc = oIE.document
-        linkVersao = htmlDoc.getElementsByClassName("XqQF9c").Length
-        For link = 0 To linkVersao
-            descricaoVersao = htmlDoc.getElementsByClassName("XqQF9c")(link).innerText
-            inicioBaixarVersao = Mid(descricaoVersao, 14, 3)
-            If inicioBaixarVersao = versaoChromePcAtual Then
-                baixarVersao = Mid(descricaoVersao, 14, 13)
-                Exit For
-            End If
-        Next
+        numeroVersao = htmlDoc.getElementsByTagName("code")(0).innerText
         oIE.Quit
         
         If fso.FileExists(user & "\AppData\Local\SeleniumBasic\chromedriver.exe") Then
@@ -44,7 +36,7 @@ Sub atualizaChromeDriver()
         End If
         
         ' Define a URL do arquivo .zip a ser baixado
-        url = "https://chromedriver.storage.googleapis.com/" & baixarVersao & "/chromedriver_win32.zip"
+        url = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/" & numeroVersao & "/win32/chromedriver-win32.zip"
         
         ' Faz o Download utilizando httpRequest
         Set httpRequest = CreateObject("MSXML2.XMLHTTP")
@@ -89,5 +81,11 @@ Sub atualizaChromeDriver()
         
         ' Excluir o arquivo zip
         Kill user & "\AppData\Local\SeleniumBasic\chromedriver_win32.zip"
+        
+        'Mover o arquivo do driver
+        Name user & "\AppData\Local\SeleniumBasic\chromedriver-win32\chromedriver.exe" As user & "\AppData\Local\SeleniumBasic\chromedriver.exe"
+        
+        'Excluir a pasta onde estava o driver
+        Kill user & "\AppData\Local\SeleniumBasic\chromedriver_win32\" & "\*.*"
     End If
 End Sub
