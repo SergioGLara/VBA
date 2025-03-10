@@ -1,91 +1,215 @@
-Sub atualizaChromeDriver()
-    ' Especifica o usuário de forma dinâmica
+Sub AtualizaChromeDriver()
+    ' Declaração de variáveis principais
+    Dim user As String, caminhoPasta As String, caminhoZip As String
+    Dim chromeVersion As String, majorVersion As String
+    Dim driverVersion As String, downloadVersion As String
+    Dim downloadUrl As String
+
+    ' Caminho do usuário e pasta do SeleniumBasic
     user = Environ("USERPROFILE")
-    
-    ' Verificar a versão do Chrome instalada no computador
-    Set regKey = CreateObject("WScript.Shell")
-    versaoChromePcAtual = Mid(regKey.RegRead("HKEY_CURRENT_USER\SOFTWARE\Google\Chrome\BLBeacon\version"), 1, 3)
-    
-    ' Verifica a versao do ChromeDriver instalada no computador
-    driverPath = user & "\AppData\Local\SeleniumBasic\chromedriver.exe"
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    If fso.FileExists(driverPath) Then
-        cmd = "cmd /C" & driverPath & " --version"
-        Set wsh = VBA.CreateObject("WScript.Shell")
-        output = wsh.Exec(cmd).StdOut.ReadAll
-        driverVersion = Mid(Trim(Split(output, " ")(1)), 1, 3)
+    caminhoPasta = user & "\AppData\Local\SeleniumBasic\"
+    caminhoZip = user & "\Downloads\chromedriver_win32.zip"
+
+    ' Obter a versão principal do Chrome instalado
+    chromeVersion = GetChromeVersion()
+    If chromeVersion = "" Then
+        MsgBox "Erro ao obter a versão do Chrome instalado.", vbCritical
+        Exit Sub
     End If
+    majorVersion = Split(chromeVersion, ".")(0)
+
+    ' Obter a versão do ChromeDriver instalada
+    driverVersion = GetChromeDriverVersion()
     
-    ' Caso a versao do ChromeDriver e a versao do Chrome forem diferentes, abre o Internet Explorer e encontra a versão correta para download
-    If versaoChromePcAtual <> driverVersion Then
-        Set oIE = CreateObject("InternetExplorer.Application")
-        oIE.Visible = False
-        oIE.Navigate ("https://googlechromelabs.github.io/chrome-for-testing/")
-        Do While oIE.Busy Or oIE.readyState <> 4
-            DoEvents
-        Loop
-        Set htmlDoc = oIE.document
-        numeroVersao = htmlDoc.getElementsByTagName("code")(0).innerText
-        oIE.Quit
-        
-        If fso.FileExists(user & "\AppData\Local\SeleniumBasic\chromedriver.exe") Then
-            Kill user & "\AppData\Local\SeleniumBasic\chromedriver.exe"
+    ' Atualizar apenas se o ChromeDriver estiver desatualizado
+    If driverVersion = "" Or majorVersion <> driverVersion Then
+        ' Obter a versão correta do ChromeDriver
+        downloadVersion = GetChromeDriverLatestVersion(majorVersion)
+        If downloadVersion = "" Then
+            MsgBox "Erro ao localizar o ChromeDriver para a versão " & majorVersion, vbCritical
+            Exit Sub
         End If
-        If fso.FileExists(user & "\AppData\Local\SeleniumBasic\LICENSE.chromedriver") Then
-            Kill user & "\AppData\Local\SeleniumBasic\LICENSE.chromedriver"
+
+        ' Construir URL de download
+        downloadUrl = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/" & downloadVersion & "/win32/chromedriver-win32.zip"
+
+        ' Fazer download do ChromeDriver
+        If Not DownloadFile(downloadUrl, caminhoZip) Then
+            MsgBox "Erro ao baixar o arquivo do ChromeDriver.", vbCritical
+            Exit Sub
         End If
-        
-        ' Define a URL do arquivo .zip a ser baixado
-        url = "https://edgedl.me.gvt1.com/edgedl/chrome/chrome-for-testing/" & numeroVersao & "/win32/chromedriver-win32.zip"
-        
-        ' Faz o Download utilizando httpRequest
-        Set httpRequest = CreateObject("MSXML2.XMLHTTP")
-        httpRequest.Open "GET", url, False
-        httpRequest.Send
-        Application.Wait (Now + TimeSerial(0, 0, 10))
-        
-        ' Verifica se a requisição foi bem sucedida
-        If httpRequest.Status = 200 Then
-            ' Obtém os dados do arquivo .zip
-            fileData = httpRequest.responseBody
-            
-            ' Cria um objeto ADODB.Stream para salvar os dados do arquivo
-            Set fileStream = CreateObject("ADODB.Stream")
-            
-            ' Configura o objeto para escrever os dados em um arquivo
-            fileStream.Type = 1
-            fileStream.Open
-            fileStream.Write fileData
-            fileStream.SaveToFile user & "\AppData\Local\SeleniumBasic\chromedriver_win32.zip", 2
-            
-            ' Limpa o objeto da memória
-            fileStream.Close
-            Set fileStream = Nothing
-        Else
-            ' Exibe uma mensagem de erro
-            MsgBox "Erro " & httpRequest.Status & ": " & httpRequest.statusText
+
+        ' Verificar se o arquivo foi baixado corretamente
+        If Dir(caminhoZip) = "" Then
+            MsgBox "Erro: O arquivo ZIP não foi baixado corretamente.", vbCritical
+            Exit Sub
         End If
-        
-        ' Limpa o objeto da memória
-        httpRequest.abort
-        Set httpRequest = Nothing
-        
-        ' Criar objeto para descompactar o arquivo
-        Dim shell As Object
-        Set shell = CreateObject("Shell.Application")
-        Dim zipFile As Object
-        ' Determina o arquivo ZIP a ser descompactado
-        Set zipFile = shell.Namespace(user & "\AppData\Local\SeleniumBasic\chromedriver_win32.zip")
-        ' Descompacta os arquivos na pasta
-        shell.Namespace(user & "\AppData\Local\SeleniumBasic\").CopyHere zipFile.Items
-        
-        ' Excluir o arquivo zip
-        Kill user & "\AppData\Local\SeleniumBasic\chromedriver_win32.zip"
-        
-        'Mover o arquivo do driver
-        Name user & "\AppData\Local\SeleniumBasic\chromedriver-win32\chromedriver.exe" As user & "\AppData\Local\SeleniumBasic\chromedriver.exe"
-        
-        'Excluir a pasta onde estava o driver
-        Kill user & "\AppData\Local\SeleniumBasic\chromedriver_win32\" & "\*.*"
+
+        ' Extrair o arquivo ZIP usando WinRAR
+        ExtrairComWinRAR caminhoZip, caminhoPasta
+
+        ' Atualizar o arquivo ChromeDriver
+        AtualizarChromeDriverArquivo caminhoPasta, caminhoZip
+
+        MsgBox "ChromeDriver atualizado com sucesso!", vbInformation
     End If
 End Sub
+
+' Função para obter a versão instalada do Chrome
+Function GetChromeVersion() As String
+    Dim objShell As Object, objExec As Object, saida As String
+    Set objShell = CreateObject("WScript.Shell")
+    Set objExec = objShell.Exec("cmd /c reg query ""HKCU\Software\Google\Chrome\BLBeacon"" /v version")
+    saida = objExec.StdOut.ReadAll
+
+    If InStr(saida, "REG_SZ") > 0 Then
+        GetChromeVersion = Trim(Split(saida, "REG_SZ")(1))
+    Else
+        GetChromeVersion = ""
+    End If
+End Function
+
+' Função para obter a versão instalada do ChromeDriver
+Function GetChromeDriverVersion() As String
+    Dim driverPath As String, objShell As Object, objExec As Object, output As String
+    driverPath = Environ("USERPROFILE") & "\AppData\Local\SeleniumBasic\chromedriver.exe"
+    
+    If Dir(driverPath) <> "" Then
+        Set objShell = CreateObject("WScript.Shell")
+        Set objExec = objShell.Exec("cmd /c """ & driverPath & """ --version")
+        output = objExec.StdOut.ReadAll
+        GetChromeDriverVersion = Mid(Trim(Split(output, " ")(1)), 1, 3)
+    Else
+        GetChromeDriverVersion = ""
+    End If
+End Function
+
+' Função para obter a versão mais recente do ChromeDriver
+Function GetChromeDriverLatestVersion(majorVersion As String) As String
+    Dim req As Object
+    Dim jsonResponse As String
+    Dim url As String
+
+    ' Construir a URL correta
+    url = "https://googlechromelabs.github.io/chrome-for-testing/latest-versions-per-milestone.json"
+
+    ' Criar o objeto de requisição HTTP
+    On Error Resume Next
+    Set req = CreateObject("MSXML2.XMLHTTP")
+    
+    ' Abrir conexão com a URL
+    req.Open "GET", url, False
+    
+    ' Adicionar um User-Agent para evitar bloqueios
+    req.setRequestHeader "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    
+    ' Enviar a requisição
+    req.Send
+    On Error GoTo 0
+
+    ' Capturar a resposta JSON
+    jsonResponse = req.responseText
+
+    ' Se a resposta estiver vazia, retornar erro
+    If jsonResponse = "" Then
+        MsgBox "Erro: não foi possível obter a versão do ChromeDriver.", vbCritical
+        GetChromeDriverLatestVersion = ""
+        Exit Function
+    End If
+
+    ' Extrair a versão correta do JSON
+    GetChromeDriverLatestVersion = ExtractVersionFromJson(jsonResponse, majorVersion)
+End Function
+
+
+' Função para baixar um arquivo
+Function DownloadFile(downloadUrl As String, caminhoZip As String) As Boolean
+    On Error GoTo ErrorHandler
+    Dim req As Object, binaryData As Variant, fileNum As Integer
+
+    Set req = CreateObject("WinHttp.WinHttpRequest.5.1")
+    req.Open "GET", downloadUrl, False
+    req.Send
+
+    If req.Status = 200 Then
+        binaryData = req.responseBody
+        fileNum = FreeFile
+        Open caminhoZip For Binary Access Write As #fileNum
+        Put #fileNum, 1, binaryData
+        Close #fileNum
+        DownloadFile = True
+    Else
+        DownloadFile = False
+    End If
+    Exit Function
+
+ErrorHandler:
+    MsgBox "Erro ao baixar o arquivo: " & Err.Description, vbCritical
+    DownloadFile = False
+End Function
+
+' Sub para extrair o ChromeDriver com WinRAR
+Sub ExtrairComWinRAR(zipFile As String, destino As String)
+    Dim cmd As String
+    If Dir(zipFile) = "" Then
+        MsgBox "Erro: O arquivo ZIP não foi encontrado.", vbCritical
+        Exit Sub
+    End If
+
+    cmd = """C:\Program Files\WinRAR\WinRAR.exe"" x -y """ & zipFile & """ """ & destino & """"
+    shell cmd, vbNormalFocus
+End Sub
+
+' Sub para substituir o ChromeDriver atualizado
+Sub AtualizarChromeDriverArquivo(caminhoPasta As String, caminhoZip As String)
+    On Error Resume Next
+    If Dir(caminhoPasta & "chromedriver.exe") <> "" Then
+        Kill caminhoPasta & "chromedriver.exe"
+    End If
+    On Error GoTo 0
+
+    Application.Wait (Now + TimeSerial(0, 0, 5))
+
+    If Dir(caminhoPasta & "chromedriver-win32\chromedriver.exe") <> "" Then
+        Name caminhoPasta & "chromedriver-win32\chromedriver.exe" As caminhoPasta & "chromedriver.exe"
+        Kill caminhoZip
+        On Error Resume Next
+        Kill caminhoPasta & "chromedriver-win32\*.*"
+        RmDir caminhoPasta & "chromedriver-win32"
+        On Error GoTo 0
+    Else
+        MsgBox "Erro: O ChromeDriver não foi extraído corretamente.", vbCritical
+    End If
+End Sub
+
+' Função para extrair a versão correta do ChromeDriver a partir do JSON
+Function ExtractVersionFromJson(jsonText As String, majorVersion As String) As String
+    Dim searchKey As String
+    Dim startIndex As Long
+    Dim versionKey As String
+    Dim versionStart As Long
+    Dim versionEnd As Long
+
+    ' Criar a chave de busca com base na versão principal do Chrome
+    searchKey = """" & majorVersion & """:{"""
+    startIndex = InStr(jsonText, searchKey)
+    
+    ' Se não encontrar a versão correspondente, retorna vazio
+    If startIndex = 0 Then
+        ExtractVersionFromJson = ""
+        Exit Function
+    End If
+
+    ' Buscar a chave "version" dentro da seção correspondente
+    versionKey = """version"":"""
+    versionStart = InStr(startIndex, jsonText, versionKey)
+    If versionStart = 0 Then
+        ExtractVersionFromJson = ""
+        Exit Function
+    End If
+
+    ' Determinar os limites da string e extrair o valor da versão
+    versionStart = versionStart + Len(versionKey)
+    versionEnd = InStr(versionStart, jsonText, """")
+    ExtractVersionFromJson = Mid(jsonText, versionStart, versionEnd - versionStart)
+End Function
